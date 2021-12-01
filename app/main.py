@@ -1,11 +1,12 @@
-from typing import Optional
+from typing import Optional, List
 from typing_extensions import final
 from fastapi import FastAPI, Response, status, HTTPException, Depends
 from fastapi.params import Body
 from pydantic import BaseModel
 import psycopg2
 from psycopg2.extras import RealDictCursor
-import models
+from models import Post
+import models, schemas
 from database import engine, get_db
 from sqlalchemy.orm import Session
 
@@ -14,12 +15,6 @@ models.Base.metadata.create_all(bind=engine)
 app = FastAPI()
 # uvicorn main:app --reload
 # venv\Scripts\activate.bat
-
-class Post(BaseModel):
-    title: str
-    content: str
-    published: bool=True
-    rating: Optional[int] = None
 
 try:
     conn = psycopg2.connect(host='localhost', database='socialMedia',
@@ -40,10 +35,10 @@ def root():
     # posts = cursor.fetchall()
     # return {"data": posts}
 
-@app.get("/posts")
+@app.get("/posts", response_model=List[schemas.Post])
 def get_posts(db: Session=Depends(get_db)):
     posts = db.query(models.Post).all()
-    return {"data": posts}
+    return posts
 
 # @app.get("/posts/{id}")
 # def get_posts(id: int, response: Response):
@@ -53,12 +48,12 @@ def get_posts(db: Session=Depends(get_db)):
 #         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=f"post with id:{id} not found")
 #     return {"post": post}
 
-@app.get("/posts/{id}")
+@app.get("/posts/{id}", response_model=schemas.Post)
 def get_posts(id: int, db: Session=Depends(get_db)):
     post = db.query(models.Post).filter(models.Post.id==id).first()
     if not post:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=f"post with id:{id} not found")
-    return {"post": post}
+    return post
 
 # @app.post("/posts", status_code=status.HTTP_201_CREATED)
 # def create_posts(post: Post):
@@ -68,14 +63,14 @@ def get_posts(id: int, db: Session=Depends(get_db)):
 #     conn.commit()
 #     return {"data": post}
 
-@app.post("/posts", status_code=status.HTTP_201_CREATED)
-def create_posts(post: Post, db:Session=Depends(get_db)):
+@app.post("/posts", status_code=status.HTTP_201_CREATED, response_model=schemas.Post)
+def create_posts(post: schemas.PostBase, db:Session=Depends(get_db)):
     new_post = models.Post(**post.dict())
     db.add(new_post)
     db.commit()
     db.refresh(new_post)
 
-    return {"data": post}
+    return new_post
 
 # @app.delete("/posts/{id}", status_code=status.HTTP_204_NO_CONTENT)
 # def delete_post(id: int):
@@ -109,12 +104,21 @@ def delete_post(id: int, db:Session=Depends(get_db)):
 #                             detail=f"post with ID->{id} does not exist")
 #     return {"data": post}
 
-@app.put("/posts/{id}")
-def update_post(id: int, post: Post, db: Session=Depends(get_db)):
+@app.put("/posts/{id}", response_model=schemas.Post)
+def update_post(id: int, post: schemas.PostCreate, db: Session=Depends(get_db)):
     post_query = db.query(models.Post).filter(models.Post.id==id)
     if post_query.first() == None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail=f"post with ID->{id} does not exist")
     post_query.update(post.dict(), synchronize_session=False)
     db.commit()
-    return {"data": post_query.first()}
+    return post_query.first()
+
+@app.post("/users", status_code=status.HTTP_201_CREATED, response_model=schemas.User)
+def create_users(user: schemas.UserBase, db:Session=Depends(get_db)):
+    new_user = models.User(**user.dict())
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+
+    return new_user
